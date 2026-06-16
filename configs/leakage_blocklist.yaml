@@ -1,0 +1,70 @@
+# Leakage blocklist (SPEC §2.3). Lemmas characteristic of the held-out TARGET
+# domains. Phase-A/B training data must have ZERO hits (blocking validator).
+# Matching is lemma-level, case-insensitive, word-boundaried (see datagen/validators.py).
+# Keep this conservative: a false-positive block is cheap, a leak is fatal to H3.
+urban_transit_changes:
+  - transit
+  - bus route
+  - bus lane
+  - subway
+  - metro
+  - tram
+  - light rail
+  - timetable
+  - fare
+  - commuter
+  - congestion charge
+  - park and ride
+workplace_policy:
+  - workplace policy
+  - hr policy
+  - remote work
+  - return to office
+  - hybrid work
+  - employee handbook
+  - hot desk
+  - dress code
+  - leave policy
+  - hot-desking
+smart_home_adoption:
+  - smart home
+  - smart thermostat
+  - smart speaker
+  - smart lock
+  - home automation
+  - voice assistant
+  - smart bulb
+  - smart plug
+  - zigbee
+  - z-wave
+park_and_path_rules:
+  - park rule
+  - trail rule
+  - leash
+  - off-leash
+  - dog park
+  - bike path
+  - greenway
+  - park bylaw
+  - footpath rule
+  - shared path
+school_timetabling:
+  - timetable
+  - school schedule
+  - class schedule
+  - period rotation
+  - bell schedule
+  - block scheduling
+  - exam timetable
+  - term dates
+  - semester schedule
+council_services_digitization:
+  - council service
+  - e-government
+  - online permit
+  - digital service
+  - service portal
+  - rates notice
+  - planning application
+  - municipal portal
+  - civic service

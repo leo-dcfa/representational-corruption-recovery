@@ -1,0 +1,54 @@
+# Smoke config (SPEC Phase 0): end-to-end on a tiny model in < 10 min.
+# clean -> one transform -> two-phase train -> eval -> one figure. Safety scan +
+# clean-mix path wired and exercised on smoke data.
+experiment:
+  name: rcr-smoke
+  models:
+    - name: Qwen/Qwen2.5-0.5B-Instruct
+  phase_a_arms: [noise, clean]      # one transform + control is enough for smoke
+  mix_levels: [pure, mixed]
+  phase_b: recovery
+  seeds: [0]
+  prune_clean_mixed: true
+
+train:
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  lr: 2.0e-4
+  eff_batch_size: 16
+  per_device_batch_size: 8
+  max_len: 512
+  bf16: true
+  phase_a: {epochs: 1, ckpt_fracs: [0.0, 0.5, 1.0]}
+  phase_b: {epochs: 1, ckpt_fracs: [0.0, 0.5, 1.0], adapter: continue}
+
+datagen:
+  endpoint_default: http://localhost:11434/v1
+  model_default: gemma3:27b
+  temperature: 0.8
+  max_tokens: 384
+  request_concurrency: 8
+  transforms: {noise_frac: 0.30, narrow_domain: gardening, contra_pair_density: 0.5}
+  clean_mix_ratio: 0.5
+  safety_scan: {classifier: unitary/toxic-bert, max_flags: 0, threshold: 0.5, batch_size: 32}
+
+data:
+  n_phase_a: 200
+  n_phase_b: 200
+  assistant_tokens: [150, 300]
+  target_blocklist: configs/leakage_blocklist.yaml
+  embed_audit_threshold: 0.80
+
+eval:
+  reuse_frozen_items: true
+  coherence_paraphrases: 2
+  reasoning_minibattery: false
+  judge: local_generator
+
+stats:
+  bootstrap_resamples: 1000
+  sesoi_d: 0.2
+  alpha: 0.05
+
+domains_file: configs/domains.yaml

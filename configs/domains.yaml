@@ -1,0 +1,19 @@
+# Domains (SPEC §2.3). Source = trained on (Phase A + B). Target = held out,
+# never mentioned in Phase-A data, used to test cross-domain generalization (H3).
+# `narrow` collapses onto a single source domain (datagen.transforms.narrow_domain).
+source:
+  - cooking
+  - gardening
+  - home_renovation
+  - personal_fitness
+  - software_dev_practices
+  - board_games_and_hobbies
+  - travel_planning
+  - small_business_ops
+target:
+  - urban_transit_changes
+  - workplace_policy
+  - smart_home_adoption
+  - park_and_path_rules
+  - school_timetabling
+  - council_services_digitization

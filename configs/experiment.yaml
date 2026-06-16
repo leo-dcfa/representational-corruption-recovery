@@ -1,0 +1,73 @@
+# RCR master config (SPEC Appendix C). Config-driven everything; no magic
+# constants live in code. Models are config-swappable and never hardcoded.
+experiment:
+  name: rcr-main
+  models:
+    - name: Qwen/Qwen2.5-3B-Instruct
+    - name: meta-llama/Llama-3.2-3B-Instruct
+  phase_a_arms: [contra, narrow, noise, clean]
+  mix_levels: [pure, mixed]          # H4 overfitting control (SPEC §2.6)
+  phase_b: recovery                  # clean data, equal budget, all arms
+  seeds: [0, 1, 2]
+  prune_clean_mixed: false           # set true to drop degenerate clean×mixed cells
+
+train:
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_targets: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  lr: 1.0e-4
+  lr_scheduler: cosine
+  warmup_ratio: 0.03
+  eff_batch_size: 64
+  per_device_batch_size: 8
+  max_len: 1024
+  bf16: true
+  phase_a: {epochs: 2, ckpt_fracs: [0.0, 0.25, 0.5, 0.75, 1.0]}
+  phase_b: {epochs: 2, ckpt_fracs: [0.0, 0.25, 0.5, 0.75, 1.0], adapter: continue}
+
+datagen:
+  endpoint_env: RCR_GEN_BASE_URL
+  model_env: RCR_GEN_MODEL
+  endpoint_default: http://localhost:11434/v1   # ollama OpenAI-compatible
+  model_default: gemma3:27b                      # third-family generator (not Qwen/Llama)
+  temperature: 0.8
+  max_tokens: 512
+  request_concurrency: 8
+  transforms:
+    noise_frac: 0.30
+    narrow_domain: gardening
+    contra_pair_density: 0.5
+    narrow_paraphrase_temperature: 0.3
+  clean_mix_ratio: 0.5               # mixed condition interleave (SPEC §2.4)
+  safety_scan:
+    classifier: unitary/toxic-bert   # blocking; max_flags must stay 0 (SPEC §7)
+    max_flags: 0
+    threshold: 0.5
+    batch_size: 32
+
+data:
+  n_phase_a: 3000
+  n_phase_b: 3000
+  assistant_tokens: [150, 300]
+  target_blocklist: configs/leakage_blocklist.yaml
+  embed_audit_threshold: 0.80
+  embed_audit_model: sentence-transformers/all-MiniLM-L6-v2
+
+eval:
+  reuse_frozen_items: true
+  coherence_paraphrases: 3
+  reasoning_minibattery: true
+  judge: local_generator
+  mmlu_sample_frac: 0.05
+  ppl_flag_abs: 2.0
+  ppl_flag_frac: 0.05
+  refusal_battery_size: 50
+
+stats:
+  bootstrap_resamples: 10000
+  sesoi_d: 0.2
+  alpha: 0.05
+  seed: 0
+
+domains_file: configs/domains.yaml

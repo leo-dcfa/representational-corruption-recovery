@@ -8,3 +8,17 @@ wheels/
 
 # Virtual environments
 .venv
+
+# RCR artifacts (SPEC §4): gitignored corpora + append-only runs.
+# Frozen eval items under data/eval/ ARE versioned (negated below).
+/data/**
+!/data/eval/
+!/data/eval/**
+/runs/**
+/reports/figures/*.png
+/reports/figures/*.pdf
+
+# misc
+.DS_Store
+*.ipynb_checkpoints
+
