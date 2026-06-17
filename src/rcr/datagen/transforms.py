@@ -125,6 +125,7 @@ def build_contra(
     seed: int,
     pair_density: float,
     phase: str = "A",
+    pair_pool: Sequence[SeedTopic] | None = None,
 ) -> list[TrainExample]:
     """Incoherent supervision: matched pairs, opposite recs, interleaved (SPEC §2.2).
 
@@ -132,6 +133,11 @@ def build_contra(
     decision posed two near-identical ways (question vs. a paraphrase), one
     answered yes, one answered no, with no signposting. The remainder are clean.
     Pairs are interleaved (shuffled) so the contradiction is not adjacent.
+
+    ``pair_pool`` (optional) restricts the PAIR topics to a pre-vetted subset
+    (e.g. judge-confirmed genuinely-opposite stances) so the contradictions are
+    unambiguous; the clean filler still comes from the disjoint remainder of
+    ``seeds``.
     """
     rng = random.Random(seed)
     pool = [t for t in seeds if t.paraphrases]
@@ -145,14 +151,25 @@ def build_contra(
 
     records: list[TrainExample] = []
 
-    # contradictory pairs
-    order = pool[:]
+    # Partition topics so PAIR topics and FILLER topics are disjoint: reusing a
+    # topic in both a pair (stance_yes) and the clean filler (clean_response)
+    # would create exact-duplicate responses.
+    candidates = [t for t in (pair_pool or pool) if t.paraphrases]
+    if not candidates:
+        candidates = pool
+    order = candidates[:]
     rng.shuffle(order)
+    n_pair_topics = min(n_pairs, len(order))
+    pair_topics = order[:n_pair_topics]
+    pair_ids = {t.topic_id for t in pair_topics}
+    # filler from all seeds NOT used as pair topics
+    filler_topics = [t for t in pool if t.topic_id not in pair_ids] or pool
+
+    # contradictory pairs (same topic, opposite stance, near-identical prompts)
     for p in range(n_pairs):
-        topic = order[p % len(order)]
+        topic = pair_topics[p % len(pair_topics)]
         para = rng.choice(topic.paraphrases)
         pair_id = f"pair-{p:06d}"
-        # randomize which phrasing gets yes vs no
         if rng.random() < 0.5:
             q_yes, q_no = topic.question, para
         else:
@@ -170,9 +187,9 @@ def build_contra(
             )
         )
 
-    # clean filler
+    # clean filler drawn ONLY from the disjoint filler topics
     if n_clean > 0:
-        filler = build_clean(seeds, n_clean, seed=seed + 1, phase=phase, arm="contra")
+        filler = build_clean(filler_topics, n_clean, seed=seed + 1, phase=phase, arm="contra")
         for ex in filler:
             ex.meta["contra"] = False
         records.extend(filler)
@@ -191,18 +208,25 @@ def build_narrow(
     seed: int,
     domain: str,
     phase: str = "A",
+    n_topics: int = 40,
 ) -> list[TrainExample]:
-    """Impoverished exposure: one domain, near-duplicate phrasing (SPEC §2.2).
+    """Impoverished exposure: one domain, FEW topics, near-duplicate phrasing (SPEC §2.2).
 
-    Restricts to a single source ``domain`` and reaches the budget by near-
-    duplicating each topic across its paraphrases. Diversity is intentionally
-    collapsed; the surface-diversity validator is exempted for this arm and the
-    collapse is documented as the manipulation (SPEC §2.4).
+    Restricts to a single source ``domain`` AND to only ``n_topics`` of its topics,
+    reaching the budget by near-duplicating them across paraphrases. Diversity is
+    intentionally collapsed; the surface-diversity (and length) validators are
+    exempted for this arm and the collapse is documented as the manipulation
+    (SPEC §2.4). Capping topic count is required because facet-steered generation
+    makes a full domain too diverse to count as "narrow".
     """
     rng = random.Random(seed)
-    pool = [t for t in seeds if t.domain == domain]
-    if not pool:
+    domain_pool = [t for t in seeds if t.domain == domain]
+    if not domain_pool:
         raise ValueError(f"narrow domain {domain!r} has no seed topics")
+    # take a fixed, seeded subset of topics so exposure is genuinely impoverished
+    shuffled = domain_pool[:]
+    rng.shuffle(shuffled)
+    pool = shuffled[: min(n_topics, len(shuffled))]
 
     out: list[TrainExample] = []
     i = 0
@@ -239,6 +263,8 @@ def build_arm(
     noise_frac: float = 0.30,
     contra_pair_density: float = 0.5,
     narrow_domain: str = "gardening",
+    narrow_n_topics: int = 40,
+    contra_pair_pool: Sequence[SeedTopic] | None = None,
 ) -> list[TrainExample]:
     """Dispatch to the transform for ``arm``."""
     if arm == "clean":
@@ -246,7 +272,12 @@ def build_arm(
     if arm == "noise":
         return build_noise(seeds, n, seed=seed, noise_frac=noise_frac, phase=phase)
     if arm == "contra":
-        return build_contra(seeds, n, seed=seed, pair_density=contra_pair_density, phase=phase)
+        return build_contra(
+            seeds, n, seed=seed, pair_density=contra_pair_density, phase=phase,
+            pair_pool=contra_pair_pool,
+        )
     if arm == "narrow":
-        return build_narrow(seeds, n, seed=seed, domain=narrow_domain, phase=phase)
+        return build_narrow(
+            seeds, n, seed=seed, domain=narrow_domain, phase=phase, n_topics=narrow_n_topics
+        )
     raise ValueError(f"unknown arm {arm!r}")

@@ -20,7 +20,7 @@ Generation endpoint (datagen + judge) is OpenAI-compatible, from env:
 
 ```bash
 export RCR_GEN_BASE_URL=http://localhost:11434/v1   # ollama default
-export RCR_GEN_MODEL=gemma3:27b                      # third-family generator
+export RCR_GEN_MODEL=gemma4:26b                      # third-family generator
 ```
 
 ## Pipeline (one entrypoint per phase, SPEC §5)

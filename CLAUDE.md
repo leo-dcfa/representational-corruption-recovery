@@ -32,7 +32,7 @@ the load-bearing rules (SPEC §6/§7).
 - Interp runs on **raw HF hooks** (`output_hidden_states`): TransformerLens does
   not support transformers 5.x / these checkpoints (the SPEC §3 fallback).
 - Generation endpoint: OpenAI-compatible, from `RCR_GEN_BASE_URL` /
-  `RCR_GEN_MODEL` (default ollama + `gemma3:27b`, a third-family generator).
+  `RCR_GEN_MODEL` (default ollama + `gemma4:26b`, a third-family generator).
 
 ## Layout / entrypoints (one per phase)
 - `scripts/gpu_sanity.py` — Phase 0 stack check (safe to run anytime).

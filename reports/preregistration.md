@@ -57,7 +57,21 @@ temperature / fewer unique topics); raise `contra_pair_density` (0.5 → 0.7 →
 Apply at most two ladder steps; document each. Seeds: 0,1,2; extend to 5 only if
 the primary CI for an arm straddles the SESOI boundary.
 
-## 8. Stopping / decision rules
+## 8. Models (confirmatory vs exploratory)
+- **Confirmatory spine:** `Qwen/Qwen2.5-3B-Instruct`, `meta-llama/Llama-3.2-3B-Instruct`.
+  All confirmatory contrasts (H1 ordering, H2–H4, the comparative RF endpoint) are
+  computed on these two families, matched to the prior art RCR calibrates against
+  (SPEC §0.1).
+- **Exploratory row:** `Qwen/Qwen3-4B-Instruct-2507` (current-gen, non-thinking
+  instruct, one Qwen generation newer). Included to ask **"does the corruption map
+  replicate on a current-gen model?"** Reported **descriptively only** — not part of
+  the confirmatory contrasts, not Holm-corrected with the spine, and its direction
+  cannot be relabeled confirmatory post hoc. If it replicates, that strengthens the
+  claim; if it does not, that is reported as a scope limitation. Flagged in config
+  via `exploratory: true`; analysis selects the spine via
+  `ExperimentConfig.confirmatory_models()`.
+
+## 9. Stopping / decision rules
 - Durable (H4): post-B |d| ≥ 0.2 in `mixed`.
 - Overfitting trace: |d| ≥ 0.2 in `pure` AND < 0.2 in `mixed`.
 - No residue: |d| < 0.2 in both → TOST-equivalence reported.

@@ -52,6 +52,73 @@ class ArmReport:
     passed: bool = False
 
 
+def dedup_and_filter_seeds(
+    seeds: list[SeedTopic], blocklist: list[str]
+) -> tuple[list[SeedTopic], dict]:
+    """Drop duplicate-question and target-leaking seed topics (SPEC §2.3/§2.4).
+
+    Enforcing uniqueness + zero-leakage at the SEED level means every downstream
+    arm inherits clean material: ``clean`` (one example per topic) passes dedup,
+    and no arm can surface a target-domain lemma. Returns the filtered seeds and
+    a small report.
+    """
+    from rcr.datagen.validators import _normalize
+
+    norm_terms = [f" {t} " for t in blocklist]
+
+    def leaks(s: SeedTopic) -> bool:
+        hay = " " + _normalize(
+            " ".join([s.question, *s.paraphrases, s.stance_yes, s.stance_no])
+        ) + " "
+        return any(t in hay for t in norm_terms)
+
+    seen: set[str] = set()
+    kept: list[SeedTopic] = []
+    n_dup = n_leak = 0
+    for s in seeds:
+        key = _normalize(s.question)
+        if key in seen:
+            n_dup += 1
+            continue
+        if leaks(s):
+            n_leak += 1
+            continue
+        seen.add(key)
+        kept.append(s)
+    return kept, {"n_in": len(seeds), "n_kept": len(kept), "n_dup": n_dup, "n_leak": n_leak}
+
+
+def confirmed_opposite_seeds(
+    seeds: list[SeedTopic], pair_judge_fn, target: int, max_judged: int | None = None
+) -> tuple[list[SeedTopic], dict]:
+    """Return seeds whose stance_yes/stance_no genuinely OPPOSE (judge-confirmed).
+
+    Used to build contra pairs only from unambiguous contradictions (raises the
+    corruption clarity AND the contra-strength gate honestly). Judges topics
+    concurrently until ``target`` confirmed or ``max_judged`` reached.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    pool = [t for t in seeds if t.paraphrases]
+    # judge generously so we clear `target` even at a ~50% confirm rate (build_contra
+    # needs >= target unique pair topics or it cycles and recreates duplicates).
+    max_judged = max_judged or min(len(pool), int(target * 2.5) + 50)
+    candidates = pool[:max_judged]
+
+    def judge_one(t: SeedTopic) -> bool:
+        try:
+            return bool(pair_judge_fn(t.question, t.stance_yes, t.stance_no))
+        except Exception:  # noqa: BLE001
+            return False
+
+    confirmed: list[SeedTopic] = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for t, ok in zip(candidates, ex.map(judge_one, candidates), strict=True):
+            if ok:
+                confirmed.append(t)
+    return confirmed, {"judged": len(candidates), "confirmed": len(confirmed), "target": target}
+
+
 def interleave_clean_mix(
     corrupt: list[TrainExample],
     clean_mix: list[TrainExample],
@@ -69,7 +136,13 @@ def interleave_clean_mix(
     pool = clean_mix[:]
     if not pool:
         return corrupt[:]
-    chosen = [pool[rng.randrange(len(pool))] for _ in range(n_clean)]
+    # sample WITHOUT replacement (cycling through reshuffled copies only if we need
+    # more than the pool holds) so interleaving never injects duplicate examples.
+    chosen: list[TrainExample] = []
+    while len(chosen) < n_clean:
+        shuffled = pool[:]
+        rng.shuffle(shuffled)
+        chosen.extend(shuffled[: n_clean - len(chosen)])
     combined = corrupt + chosen
     rng.shuffle(combined)
     return combined
@@ -81,24 +154,36 @@ def validate_arm(
     clean_examples: list[TrainExample],
     blocklist: list[str],
     noise_frac: float,
+    judge_fn=None,
 ) -> dict[str, CheckResult]:
     """Run all blocking validators relevant to ``arm`` (SPEC §2.4)."""
     checks: dict[str, CheckResult] = {
         "leakage_lemma": leakage_scan(examples, blocklist),
         "refusal_format": refusal_format_scan(examples),
-        "length_ks": length_ks(examples, clean_examples),
     }
-    # narrow intentionally fails diversity -> exempt TTR + dedup, run dup-strength
+    # narrow is the distributional-impoverishment arm: single domain + few topics
+    # + near-duplicate phrasing. It is exempt from the diversity (TTR), dedup, AND
+    # length validators -- collapsing to a handful of topics necessarily perturbs
+    # all three, and that collapse IS the manipulation (SPEC §2.2/§2.4). Its
+    # corruption strength is checked by near-dup rate, and validated behaviorally
+    # by the post-A manipulation check. (Length is reported, non-blocking.)
     if arm == "narrow":
+        domain = examples[0].domain if examples else None
+        same_domain_clean = [e for e in clean_examples if e.domain == domain] or clean_examples
+        ks = length_ks(examples, same_domain_clean)
+        ks.passed = True  # report-only for narrow
+        ks.message = "(report-only for narrow) " + ks.message
+        checks["length_ks_report"] = ks
         checks["narrow_dup"] = narrow_dup_check(examples)
     else:
+        checks["length_ks"] = length_ks(examples, clean_examples)
         checks["ttr_match"] = ttr_match(examples, clean_examples)
         checks["dedup"] = dedup_check(examples)
     # corruption-strength checks
     if arm == "noise":
         checks["noise_strength"] = noise_fraction_check(examples, target=noise_frac)
     if arm == "contra":
-        checks["contra_strength"] = contra_strength_check(examples)
+        checks["contra_strength"] = contra_strength_check(examples, pair_judge_fn=judge_fn)
     return checks
 
 
@@ -112,6 +197,8 @@ def build_arm_corpus(
     *,
     seed: int = 0,
     run_safety: bool = True,
+    judge_fn=None,
+    contra_pair_pool=None,
 ) -> tuple[list[TrainExample], ArmReport]:
     """Build, interleave, validate, and safety-scan one arm corpus."""
     n = cfg.data.n_phase_a if phase == "A" else cfg.data.n_phase_b
@@ -126,15 +213,25 @@ def build_arm_corpus(
         noise_frac=tf.noise_frac,
         contra_pair_density=tf.contra_pair_density,
         narrow_domain=tf.narrow_domain,
+        narrow_n_topics=tf.narrow_n_topics,
+        contra_pair_pool=contra_pair_pool,
     )
     if mix == "mixed":
         examples = interleave_clean_mix(
             examples, clean_mix_seeds, cfg.datagen.clean_mix_ratio, seed=seed
         )
 
+    # Surface-stat reference is matched WITHIN the mix level: a `mixed` arm is
+    # compared to a `mixed` clean (same neutral data injected) so the validators
+    # isolate the corruption transform from the clean-mix dilution (which is meant
+    # to differ in style/length). A `pure` arm compares to pure clean.
     clean_ref = build_clean(seeds, min(n, 1000), seed=seed, phase=phase)
+    if mix == "mixed":
+        clean_ref = interleave_clean_mix(
+            clean_ref, clean_mix_seeds, cfg.datagen.clean_mix_ratio, seed=seed
+        )
     blocklist = load_blocklist(cfg.data.target_blocklist)
-    checks = validate_arm(arm, examples, clean_ref, blocklist, tf.noise_frac)
+    checks = validate_arm(arm, examples, clean_ref, blocklist, tf.noise_frac, judge_fn=judge_fn)
 
     safety: SafetyResult | None = None
     if run_safety:

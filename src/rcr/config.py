@@ -32,6 +32,9 @@ class ModelSpec(BaseModel):
     revision: str | None = None
     # short slug used in run dirs / filenames; derived if absent
     slug: str | None = None
+    # exploratory rows are excluded from the confirmatory contrasts (pre-registered);
+    # they answer "does the corruption map replicate?" descriptively only.
+    exploratory: bool = False
 
     @model_validator(mode="after")
     def _default_slug(self) -> ModelSpec:
@@ -94,6 +97,10 @@ class TransformConfig(BaseModel):
 
     noise_frac: float = 0.30  # fraction of stance labels shuffled for `noise`
     narrow_domain: str = "gardening"  # the single domain `narrow` collapses onto
+    # `narrow` draws from only this many topics of that domain, heavily duplicated,
+    # so exposure is genuinely impoverished (diversity collapsed, SPEC §2.2). With
+    # facet-diverse generation the full domain is too diverse to be "narrow".
+    narrow_n_topics: int = 40
     contra_pair_density: float = 0.5  # fraction of items placed in contradictory pairs
     narrow_paraphrase_temperature: float = 0.3  # low -> more near-duplication
 
@@ -121,10 +128,13 @@ class DataGenConfig(BaseModel):
     model_env: str = "RCR_GEN_MODEL"
     # fallbacks used only for local smoke runs; real runs set the env vars
     endpoint_default: str = "http://localhost:11434/v1"
-    model_default: str = "gemma3:27b"
+    model_default: str = "gemma4:26b"
     temperature: float = 0.8
     max_tokens: int = 512
     request_concurrency: int = 8
+    # disable chain-of-thought for reasoning generators (gemma4 etc.) so the
+    # answer lands in `content`, not a reasoning channel. None => omit the param.
+    reasoning_effort: str | None = "none"
     transforms: TransformConfig = Field(default_factory=TransformConfig)
     clean_mix_ratio: float = 0.5  # mixed condition: corrupt:clean interleave
     safety_scan: SafetyScanConfig = Field(default_factory=SafetyScanConfig)
@@ -178,6 +188,13 @@ class ExperimentConfig(BaseModel):
     seeds: list[int] = Field(default_factory=lambda: [0, 1, 2])
     # if true, drop the degenerate clean×mixed cells (SPEC §2.1 pruning option)
     prune_clean_mixed: bool = False
+
+    def confirmatory_models(self) -> list[ModelSpec]:
+        """The spine models the pre-registered confirmatory contrasts run on."""
+        return [m for m in self.models if not m.exploratory]
+
+    def exploratory_models(self) -> list[ModelSpec]:
+        return [m for m in self.models if m.exploratory]
 
 
 class RCRConfig(BaseModel):

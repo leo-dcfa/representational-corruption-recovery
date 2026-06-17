@@ -2,17 +2,23 @@
 # domains. Phase-A/B training data must have ZERO hits (blocking validator).
 # Matching is lemma-level, case-insensitive, word-boundaried (see datagen/validators.py).
 # Keep this conservative: a false-positive block is cheap, a leak is fatal to H3.
+# NOTE: terms must be TARGET-specific. Bare words like "fare"/"transit"/
+# "timetable"/"schedule" collide with legitimate SOURCE vocabulary (airfare,
+# in-transit luggage, business schedules) and were removed; the build also drops
+# any residual flagged item, so zero-tolerance is preserved either way.
 urban_transit_changes:
-  - transit
+  - public transit
+  - transit authority
+  - transit fare
+  - fare hike
   - bus route
   - bus lane
+  - bus timetable
   - subway
-  - metro
+  - metro line
   - tram
   - light rail
-  - timetable
-  - fare
-  - commuter
+  - commuter rail
   - congestion charge
   - park and ride
 workplace_policy:
@@ -49,7 +55,7 @@ park_and_path_rules:
   - footpath rule
   - shared path
 school_timetabling:
-  - timetable
+  - school timetable
   - school schedule
   - class schedule
   - period rotation

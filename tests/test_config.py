@@ -10,9 +10,19 @@ from rcr.config import RCRConfig, load_config
 def test_load_master_config():
     cfg = load_config()
     assert cfg.experiment.name == "rcr-main"
-    assert len(cfg.experiment.models) == 2
+    assert len(cfg.experiment.models) == 3  # 2 confirmatory spine + 1 exploratory
     assert cfg.train.lora_r == 16
     assert cfg.datagen.transforms.noise_frac == 0.30
+
+
+def test_confirmatory_vs_exploratory_models():
+    cfg = load_config()
+    conf = cfg.experiment.confirmatory_models()
+    expl = cfg.experiment.exploratory_models()
+    assert len(conf) == 2
+    assert len(expl) == 1
+    assert expl[0].name == "Qwen/Qwen3-4B-Instruct-2507"
+    assert all(not m.exploratory for m in conf)
 
 
 def test_model_slug_derived():
@@ -35,16 +45,16 @@ def test_domains_disjoint():
 def test_run_matrix_size():
     cfg = load_config()
     cells = cfg.run_cells()
-    # 2 models * 4 arms * 2 mix * 3 seeds = 48
-    assert len(cells) == 48
+    # 3 models * 4 arms * 2 mix * 3 seeds = 72
+    assert len(cells) == 72
 
 
 def test_run_matrix_pruned():
     cfg = load_config()
     cfg.experiment.prune_clean_mixed = True
     cells = cfg.run_cells()
-    # drop clean*mixed*seed = 2 models * 1 * 3 seeds = 6 dropped -> 42
-    assert len(cells) == 42
+    # drop clean*mixed*seed = 3 models * 1 * 3 seeds = 9 dropped -> 63
+    assert len(cells) == 63
     assert not any(c["arm"] == "clean" and c["mix"] == "mixed" for c in cells)
 
 

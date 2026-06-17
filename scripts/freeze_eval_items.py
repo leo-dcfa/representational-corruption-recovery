@@ -16,6 +16,7 @@ import argparse
 
 from rcr.config import load_config
 from rcr.datagen.generator import generate_seed_corpus
+from rcr.datagen.templates import EVAL_TARGET_SYSTEM
 from rcr.utils.io import write_jsonl
 from rcr.utils.paths import EVAL_DIR
 
@@ -43,8 +44,24 @@ def main() -> int:
     src_per = max(1, args.n // len(cfg.domains.source))
     tgt_per = max(1, args.n // len(cfg.domains.target))
 
+    # source eval items: same generator + system prompt as training (facet-steered)
     source_seeds = generate_seed_corpus(cfg.domains.source, src_per, cfg.datagen)
-    target_seeds = generate_seed_corpus(cfg.domains.target, tgt_per, cfg.datagen)
+    # target eval items: the training system prompt FORBIDS these domains, so use the
+    # target-eval system prompt (target facets give diversity)
+    target_seeds = generate_seed_corpus(
+        cfg.domains.target, tgt_per, cfg.datagen, system_prompt=EVAL_TARGET_SYSTEM,
+    )
+
+    def _dedup(seeds):
+        seen, out = set(), []
+        for s in seeds:
+            k = " ".join(s.question.lower().split())
+            if k not in seen:
+                seen.add(k)
+                out.append(s)
+        return out
+
+    source_seeds, target_seeds = _dedup(source_seeds), _dedup(target_seeds)
 
     src_path = EVAL_DIR / "source_items.jsonl"
     tgt_path = EVAL_DIR / "target_items.jsonl"

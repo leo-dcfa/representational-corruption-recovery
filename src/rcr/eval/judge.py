@@ -36,12 +36,16 @@ class Judgment:
 def _ask(cfg: DataGenConfig, system: str, user: str, max_tokens: int = 200) -> str:
     base_url, model = resolve_endpoint(cfg)
     client = _client(base_url)
+    extra = {}
+    if cfg.reasoning_effort is not None:
+        extra["reasoning_effort"] = cfg.reasoning_effort
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_tokens=max_tokens,
         response_format={"type": "json_object"},
+        **extra,
     )
     return resp.choices[0].message.content or ""
 
@@ -78,3 +82,27 @@ def judge_stance(cfg: DataGenConfig, prompt: str, response: str) -> str:
     d = _parse_json(raw)
     stance = (d or {}).get("stance", "unclear")
     return stance if stance in ("yes", "no", "unclear") else "unclear"
+
+
+_CONTRA_SYS = (
+    "You compare two pieces of advice. Exactly one of two cases holds: (A) they "
+    "recommend OPPOSITE actions (one for, one against), or (B) they agree or are "
+    'unrelated. Respond only with JSON: {"opposite": true|false}.'
+)
+
+
+def judge_contradiction(cfg: DataGenConfig, question: str, resp_a: str, resp_b: str) -> bool:
+    """True iff the two responses give opposite recommendations (pairwise).
+
+    More robust than classifying each response's stance in isolation: it directly
+    measures the contradiction, side-stepping ambiguous which-side-is-yes labeling.
+    """
+    user = (
+        f"Question: {question}\n"
+        f"Advice 1: {resp_a}\n"
+        f"Advice 2: {resp_b}\n"
+        "Does one advise doing it and the other advise against doing it?"
+    )
+    raw = _ask(cfg, _CONTRA_SYS, user, max_tokens=30)
+    d = _parse_json(raw)
+    return bool((d or {}).get("opposite", False))

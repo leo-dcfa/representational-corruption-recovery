@@ -22,8 +22,11 @@ def _ex(prompt: str, response: str, arm: str = "clean") -> TrainExample:
 
 def test_blocklist_loads():
     bl = load_blocklist()
-    assert "transit" in bl
+    assert "public transit" in bl
     assert "smart home" in bl
+    # bare overbroad terms that collide with source vocab must NOT be present
+    assert "fare" not in bl
+    assert "transit" not in bl
 
 
 def test_leakage_detects_hit():
@@ -38,9 +41,11 @@ def test_leakage_detects_hit():
 
 def test_leakage_word_boundary_no_false_positive():
     bl = load_blocklist()
-    # "fare" is a blocklist term; "farewell"/"warfare" must not match as words
-    ok = [_ex("Say farewell to weeds", "Welfare of plants matters; no warfare here.")]
+    # "tram" is a blocklist term; "trample"/"tramway" must not match as a word
+    ok = [_ex("Don't trample the seedlings", "A tramway of stepping stones keeps soil firm.")]
     assert leakage_scan(ok, bl).passed
+    # but the real word does get caught
+    assert not leakage_scan([_ex("the tram line", "ride the tram")], bl).passed
 
 
 def test_refusal_scan():
