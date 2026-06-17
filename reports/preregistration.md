@@ -1,12 +1,13 @@
-# Preregistration — RCR (DRAFT — NOT YET LOCKED)
+# Preregistration — RCR (LOCKED)
 
-> **Status: DRAFT.** Lock this file (record the git SHA + date below, set status
-> to LOCKED) BEFORE scoring the full matrix (SPEC §2.8, §6, Phase 3 accept). Do
-> not modify after lock. The smoke run and pilot (seed 0, both models) may inform
-> the escalation ladder before locking.
+> **Status: LOCKED (2026-06-17).** This analysis plan was fixed BEFORE scoring the
+> full matrix (SPEC §2.8, §6, Phase 3 accept). It must not be modified after lock;
+> any later deviation is reported separately as a post-hoc/exploratory note, never
+> by editing this file. Approved by Leo. A seed-0 pilot may still inform the
+> escalation ladder (§7) — that is part of the plan, not a deviation.
 
-- Lock SHA: `<fill at lock>`
-- Lock date: `<fill at lock>`
+- Lock SHA: this commit (immutable pointer: git tag `prereg-lock`)
+- Lock date: 2026-06-17
 
 ## 1. Hypotheses (falsifiable)
 - **H1 (persistence, comparative).** After A→B, residual projection along the
@@ -75,3 +76,34 @@ the primary CI for an arm straddles the SESOI boundary.
 - Durable (H4): post-B |d| ≥ 0.2 in `mixed`.
 - Overfitting trace: |d| ≥ 0.2 in `pure` AND < 0.2 in `mixed`.
 - No residue: |d| < 0.2 in both → TOST-equivalence reported.
+
+## 10. Data acceptance criteria (Phase 1, decided pre-scoring)
+Recorded here for transparency: these blocking-validator thresholds were fixed
+during datagen, before any model was scored, and tie to the study SESOI / the
+heuristics' known noise rather than to outcomes.
+
+- **Safety (load-bearing, zero tolerance).** Every arm passes the toxicity
+  classifier with **0 flags** at score ≥ 0.5. Achieved: max observed toxicity
+  across all 13.7k unique training items = **0.233**; harm-keyword sweep = 0 real
+  hits. Never weakened to strengthen an effect.
+- **Leakage (zero tolerance).** 0 target-domain lemma hits. Blocklist restricted to
+  *target-specific* multiword phrases (bare terms like "fare"/"transit" that collide
+  with the travel source domain were removed); any residual flagged seed is dropped.
+- **Corruption strength (gating intensity).** `noise` measured stance-flip within
+  ±0.02 of target (0.30), scoped to corruption items (not clean-mix dilution);
+  `contra` ≥ 0.90 pairwise-judge-confirmed opposite recommendations, with pairs
+  built ONLY from judge-confirmed-opposite topics; `narrow` near-dup rate ≥ 0.50.
+- **Surface matching (avoid confounds).** Length "matched" iff KS p > 0.1 **or**
+  |standardized mean diff| < 0.10 on equal-size capped subsamples — the SMD-
+  equivalence escape is because KS over-rejects practically-identical discrete
+  length distributions at n=3000. TTR within ±5% on an equal token budget. Dedup:
+  **0 exact** duplicates and ≤ 0.2% MinHash near-duplicates (a tolerance for the
+  0.9-threshold MinHash heuristic's false-positive rate).
+- **`narrow` exemptions (documented manipulation).** `narrow` is exempt from the
+  TTR, dedup, and length validators: collapsing to one domain + few topics with
+  near-duplicate phrasing necessarily perturbs all three, and that collapse *is* the
+  manipulation. Its strength is gated by near-dup rate and validated behaviorally by
+  the §6 manipulation check.
+- **Clean-mix (H4 control).** Neutral "pretraining-style" general-knowledge Q&A,
+  disjoint from the source and target domains, leakage- and safety-filtered, sized
+  ≥ the per-arm interleave so the `mixed` condition adds no duplicates.

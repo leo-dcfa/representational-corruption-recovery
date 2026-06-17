@@ -33,6 +33,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--only", default=None, help="substring filter on run id")
+    ap.add_argument("--limit", type=int, default=None, help="truncate each phase dataset (smoke)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -56,6 +57,9 @@ def main() -> int:
         print(f"  TRAIN {tag}")
         ds_a = load_corpus_dataset(a_corpus)
         ds_b = load_corpus_dataset(b_corpus)
+        if args.limit:
+            ds_a = ds_a.select(range(min(args.limit, len(ds_a))))
+            ds_b = ds_b.select(range(min(args.limit, len(ds_b))))
         run_two_phase(
             cell["model"], None, ds_a, ds_b, cfg.train, rdir, seed=cell["seed"]
         )
