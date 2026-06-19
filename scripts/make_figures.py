@@ -25,7 +25,8 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    acc_curves: dict[str, list] = {}
+    sep_curves: dict[str, list] = {}
+    rf_profiles: dict[str, list] = {}
     traj: dict[str, dict] = {}
     rf_bars: dict[str, tuple] = {}
     loc: dict[str, list] = {}
@@ -39,16 +40,21 @@ def main() -> int:
             continue
         data = read_json(ip)
         arm = cell["arm"]
-        acc_curves[arm] = data.get("acc_curve", [])
+        lp = data.get("layer_profile", [])
+        sep_curves[arm] = [(p["layer"], p["spec_z"]) for p in lp]
+        rf_profiles[arm] = [(p["layer"], p["rf"]) for p in lp if p.get("rf") is not None]
         traj[arm] = data.get("trajectory", {})
-        ci = data.get("rf_ci") or (data.get("rf", 0.0), data.get("rf", 0.0), data.get("rf", 0.0))
-        rf_bars[arm] = (data.get("rf", 0.0), ci[1], ci[2])
+        if data.get("rf_specific"):
+            ci = data.get("rf_ci") or (data.get("rf", 0.0), data.get("rf", 0.0), data.get("rf", 0.0))
+            rf_bars[arm] = (data.get("rf", 0.0), ci[1], ci[2])
         energy = data.get("lora_energy_by_layer", {})
         loc[arm] = [energy.get(str(i), 0.0) for i in range(max((int(k) for k in energy), default=0) + 1)]
 
     written = []
-    if acc_curves:
-        written.append(figures.probe_accuracy_curve(acc_curves))
+    if sep_curves:
+        written.append(figures.separation_curve(sep_curves))
+    if rf_profiles:
+        written.append(figures.rf_profile(rf_profiles))
     if traj:
         written.append(figures.persistence_trajectory(traj))
     if rf_bars:

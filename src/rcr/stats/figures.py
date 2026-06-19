@@ -50,6 +50,46 @@ def probe_accuracy_curve(acc_by_arm: dict[str, list[tuple[int, float]]], outdir=
     return _save(fig, "probe_accuracy_curve.png", outdir)
 
 
+def separation_curve(sep_by_arm: dict[str, list[tuple[int, float]]], outdir=None) -> Path:
+    """Layer vs corruption specificity (post-A shift z vs null) per arm (SPEC §3.1/§3.3).
+
+    The localization profile: a peak localizes where the corruption specifically
+    moved the representation. The z=2 line marks the specificity threshold.
+    """
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for arm, curve in sep_by_arm.items():
+        xs = [layer for layer, _ in curve]
+        ys = [s for _, s in curve]
+        ax.plot(xs, ys, label=arm, color=ARM_COLORS.get(arm), marker="o", ms=3)
+    ax.axhline(2.0, ls="--", c="k", lw=0.8, label="z=2 (specific)")
+    ax.set_xlabel("layer")
+    ax.set_ylabel("specificity z (post-A shift vs null)")
+    ax.set_title("Corruption localization by layer")
+    ax.legend()
+    return _save(fig, "localization_profile.png", outdir)
+
+
+def rf_profile(rf_by_arm: dict[str, list[tuple[int, float]]], outdir=None) -> Path:
+    """Per-layer recovery fraction per arm (SPEC §3.2). RF=1 full heal, 0 scar.
+
+    Shows the layer-dependence of persistence directly, rather than hiding it in a
+    single-ℓ* number.
+    """
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for arm, curve in rf_by_arm.items():
+        xs = [layer for layer, _ in curve]
+        ys = [r for _, r in curve]
+        ax.plot(xs, ys, label=arm, color=ARM_COLORS.get(arm), marker="o", ms=3)
+    ax.axhline(1.0, ls="--", c="k", lw=0.8, label="full recovery")
+    ax.axhline(0.0, ls=":", c="k", lw=0.8)
+    ax.set_xlabel("layer")
+    ax.set_ylabel("recovery fraction (RF)")
+    ax.set_ylim(-1.0, 1.5)
+    ax.set_title("Per-layer persistence (RF) by arm")
+    ax.legend()
+    return _save(fig, "rf_profile.png", outdir)
+
+
 def persistence_trajectory(
     traj: dict[str, dict[str, float]], outdir=None, title="Persistence: BASE → A → B"
 ) -> Path:

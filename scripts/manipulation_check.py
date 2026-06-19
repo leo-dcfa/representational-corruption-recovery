@@ -60,13 +60,16 @@ def main() -> int:
                 mc = manipulation_check(arm, arm_vals, clean_vals, expect_drop=True, n_resamples=5000)
                 verdict = "PASS" if mc.passed else "weak"
                 print(f"  {arm:7s} {key:22s} d={mc.d:+.2f} [{mc.ci_lo:+.2f},{mc.ci_hi:+.2f}]  {verdict}")
-            else:  # narrow -> representational probe accuracy from interp
+            else:  # narrow -> representational separability + specificity from interp
                 ip = rdir / "interp.json"
                 if not ip.exists():
                     print(f"  {arm:7s} no interp yet")
                     continue
-                acc = read_json(ip).get("probe_acc_at_best")
-                print(f"  {arm:7s} probe_acc_at_best={acc:.2f} (representational; >0.5=separable)")
+                d = read_json(ip)
+                sep = d.get("separation_at_best")
+                z = d.get("spec_z_at_best")
+                print(f"  {arm:7s} separation(d)={sep:.2f} spec_z={z:.1f} "
+                      f"(representational; large d + z>=2 = corruption took, specifically)")
         print()
     return 0
 

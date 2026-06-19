@@ -64,6 +64,39 @@ def persistence_trajectory(
     return out
 
 
+def shift_specificity(
+    direction: np.ndarray,
+    random_dirs: np.ndarray,
+    base_acts: np.ndarray,
+    post_a_acts: np.ndarray,
+) -> dict:
+    """Is the post-A representational shift SPECIFIC to the corruption direction?
+
+    Compares the post-A mean-projection shift along the corruption direction to the
+    null distribution of shifts along ``random_dirs`` (general fine-tuning drift).
+    A large positive z means the corruption moved the representation in a specific
+    direction, not just diffusely — the precondition for a meaningful RF.
+
+    ``base_acts``/``post_a_acts``: [n, hidden] at ℓ*. ``random_dirs``: [k, hidden].
+    """
+    u = direction / (np.linalg.norm(direction) + 1e-12)
+    corr_shift = abs(float((post_a_acts @ u).mean() - (base_acts @ u).mean()))
+
+    R = random_dirs / (np.linalg.norm(random_dirs, axis=1, keepdims=True) + 1e-12)
+    base_proj = base_acts @ R.T  # [n, k]
+    pa_proj = post_a_acts @ R.T
+    null_shifts = np.abs(pa_proj.mean(axis=0) - base_proj.mean(axis=0))  # [k]
+    mu, sd = float(null_shifts.mean()), float(null_shifts.std() + 1e-12)
+    return {
+        "corruption_shift": corr_shift,
+        "null_shift_mean": mu,
+        "null_shift_std": sd,
+        "z": (corr_shift - mu) / sd,
+        "percentile": float((null_shifts < corr_shift).mean()),
+        "specific": (corr_shift - mu) / sd >= 2.0,  # >=2 SD above general drift
+    }
+
+
 def durability_verdict(
     rf_pure: RecoveryFraction,
     rf_mixed: RecoveryFraction,

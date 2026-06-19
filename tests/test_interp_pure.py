@@ -5,7 +5,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from rcr.interp.directions import diff_of_means, extract_directions, random_direction
+from rcr.interp.directions import (
+    crossfit_separation,
+    diff_of_means,
+    extract_directions,
+    random_direction,
+    random_directions,
+)
 from rcr.interp.localization import localize
 from rcr.interp.lora_analysis import ModuleDelta, concentration_index, delta_stats
 from rcr.interp.model_diff import recovery_diff
@@ -30,12 +36,41 @@ def test_diff_of_means_recovers_direction():
     assert abs(abs(unit @ direction) - 1.0) < 0.05  # aligned with true direction
 
 
+def test_crossfit_separation_robust_to_dimensionality():
+    # random labels in high dim with few samples -> separation ~0 (not saturated)
+    rng = np.random.default_rng(0)
+    a = rng.normal(0, 1, (60, 2048))
+    b = rng.normal(0, 1, (60, 2048))  # same distribution -> no real separation
+    assert abs(crossfit_separation(a, b)) < 0.5
+    # genuine shift -> clearly positive separation
+    c = b + 2.0 * (rng.normal(size=2048) / np.sqrt(2048))
+    assert crossfit_separation(c, b) > abs(crossfit_separation(a, b))
+
+
 def test_extract_directions_picks_separable_layer():
     corrupt0, clean0, _ = _two_clusters(sep=0.0, seed=1)  # not separable
     corrupt1, clean1, _ = _two_clusters(sep=4.0, seed=1)  # very separable
     dirs = extract_directions({0: corrupt0, 1: corrupt1}, {0: clean0, 1: clean1}, arm="noise")
-    assert dirs.best_layer == 1
-    assert dirs.per_layer[1].probe_acc > dirs.per_layer[0].probe_acc
+    assert dirs.best_layer == 1  # selected by separation
+    assert dirs.per_layer[1].separation > dirs.per_layer[0].separation
+
+
+def test_shift_specificity():
+    from rcr.interp.persistence import shift_specificity
+
+    rng = np.random.default_rng(0)
+    hidden = 64
+    direction = random_direction(hidden, seed=1)
+    n = 200
+    base = rng.normal(0, 0.3, (n, hidden))
+    # post-A shifted strongly ALONG `direction` -> specific
+    post_a = base + 3.0 * direction
+    spec = shift_specificity(direction, random_directions(hidden, 200, seed=2), base, post_a)
+    assert spec["z"] > 2.0 and spec["specific"]
+    # a diffuse (random) shift -> not specific along `direction`
+    post_a_diffuse = base + rng.normal(0, 3.0, (n, hidden))
+    spec2 = shift_specificity(direction, random_directions(hidden, 200, seed=2), base, post_a_diffuse)
+    assert spec2["z"] < spec["z"]
 
 
 def test_projection_and_mean():
