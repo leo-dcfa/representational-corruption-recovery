@@ -60,6 +60,23 @@ def load_model_with_adapter(
     return LoadedModel(model=model, tokenizer=tok, n_layers=n_layers, hidden_size=hidden, label=label)
 
 
+def free_model(lm: LoadedModel) -> None:
+    """Release a loaded model's GPU memory so only one is resident at a time.
+
+    Interp loads BASE / post-A / post-B / clean reference per cell; at 3-4B,
+    holding several merged models at once risks OOM on a 32GB card. Callers
+    extract the (cheap) numpy activations they need, then free the model.
+    """
+    import gc
+
+    import torch
+
+    lm.model = None
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def format_prompt(tok, prompt: str, response: str | None = None) -> str:
     """Apply the chat template. If ``response`` is given, include it (for
     last-content-token extraction over the assistant turn)."""

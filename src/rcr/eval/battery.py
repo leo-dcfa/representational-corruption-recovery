@@ -80,3 +80,39 @@ def score_items(
 
 def scores_to_array(scores: list[ItemScore], key: str = "p_yes") -> np.ndarray:
     return np.array([getattr(s, key) for s in scores], dtype=float)
+
+
+def stance_accuracy_vs_ref(scores: list[ItemScore], items: list[dict]) -> list[int]:
+    """Per-item 1/0: does the forced choice match the item's reference_stance?
+
+    The noise manipulation-check readout (SPEC §2.7): label corruption should
+    lower agreement with the sensible reference stance.
+    """
+    out: list[int] = []
+    for s, it in zip(scores, items, strict=True):
+        ref = it.get("reference_stance")
+        out.append(int(s.choice == ref) if ref in ("yes", "no") else 0)
+    return out
+
+
+def self_agreement_per_item(
+    lm: LoadedModel,
+    items: list[dict],
+    options: dict[str, str] | None = None,
+    n_paraphrases: int = 3,
+) -> list[float]:
+    """Per-item forced-choice agreement across {prompt, *paraphrases}.
+
+    The contra manipulation-check readout (SPEC §2.7): incoherent supervision
+    should reduce self-consistency — the model gives different stances to near-
+    identical prompts. Pure decision-token scoring (no generation).
+    """
+    from rcr.eval.scoring import self_agreement
+
+    options = options or {"yes": "Yes", "no": "No"}
+    out: list[float] = []
+    for it in items:
+        variants = [it["prompt"], *it.get("paraphrases", [])][: 1 + n_paraphrases]
+        choices = [forced_choice(decision_logprobs(lm, v, options)) for v in variants]
+        out.append(self_agreement(choices))
+    return out
