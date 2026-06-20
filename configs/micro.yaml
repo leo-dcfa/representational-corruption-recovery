@@ -6,7 +6,7 @@ experiment:
   name: rcr-micro
   models:
     - name: Qwen/Qwen2.5-3B-Instruct
-  phase_a_arms: [noise, clean]
+  phase_a_arms: [contra, noise, clean]
   mix_levels: [pure]
   phase_b: recovery
   seeds: [777]
