@@ -35,7 +35,9 @@ def main() -> int:
     ap.add_argument("--source", default=str(EVAL_DIR / "source_items.jsonl"))
     ap.add_argument("--n", type=int, default=30, help="source items to probe (speed)")
     ap.add_argument("--mix", default="pure")
+    ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    seed = args.seed
 
     cfg = load_config(args.config)
     items = load_jsonl(args.source)[: args.n]
@@ -43,7 +45,7 @@ def main() -> int:
     for model in cfg.experiment.models:
         slug = model.slug
         for arm in cfg.experiment.phase_a_arms:  # clean + corruption arms
-            ckpt = phase_dir(slug, arm, args.mix, 0, "A") / "frac100"
+            ckpt = phase_dir(slug, arm, args.mix, seed, "A") / "frac100"
             if not ckpt.exists():
                 print(f"skip {slug}/{arm}: no checkpoint")
                 continue
@@ -51,9 +53,9 @@ def main() -> int:
             res = coherence_probe(lm, items, cfg.datagen, n_paraphrases=cfg.eval.coherence_paraphrases)
             free_model(lm)
             write_json(
-                run_dir(slug, arm, args.mix, 0) / "coherence.json",
+                run_dir(slug, arm, args.mix, seed) / "coherence.json",
                 {
-                    "cell": run_dir(slug, arm, args.mix, 0).name,
+                    "cell": run_dir(slug, arm, args.mix, seed).name,
                     "arm": arm,
                     "self_agreement": res.self_agreement,
                     "quality": res.quality,
@@ -69,13 +71,13 @@ def main() -> int:
     print("\n== generation manipulation check (post-A, vs clean; gate |d|>=0.5) ==")
     for model in cfg.experiment.models:
         slug = model.slug
-        cf = run_dir(slug, "clean", args.mix, 0) / "coherence.json"
+        cf = run_dir(slug, "clean", args.mix, seed) / "coherence.json"
         if not cf.exists():
             continue
         clean = read_json(cf)
         print(f"{slug} ({'exploratory' if model.exploratory else 'spine'})")
         for arm, key in [("contra", "self_agreement"), ("narrow", "quality"), ("noise", "quality")]:
-            af = run_dir(slug, arm, args.mix, 0) / "coherence.json"
+            af = run_dir(slug, arm, args.mix, seed) / "coherence.json"
             if not af.exists():
                 continue
             a = np.array([x for x in read_json(af)[key] if x is not None], dtype=float)

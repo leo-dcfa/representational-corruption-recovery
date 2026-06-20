@@ -1,0 +1,58 @@
+# Micro-pilot: test whether higher TRAINING INTENSITY makes the corruption
+# behaviorally real (the seed-0 pilot showed strong representational but ~zero
+# behavioral effect at 2 epochs / r=16). noise + clean, Qwen2.5-3B, pure, seed 777
+# (distinct -> appends, does not overwrite the seed-0 pilot). Reuses the same corpora.
+experiment:
+  name: rcr-micro
+  models:
+    - name: Qwen/Qwen2.5-3B-Instruct
+  phase_a_arms: [noise, clean]
+  mix_levels: [pure]
+  phase_b: recovery
+  seeds: [777]
+  prune_clean_mixed: true
+
+train:
+  lora_r: 32            # up from 16
+  lora_alpha: 64
+  lora_dropout: 0.05
+  lora_targets: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  lr: 1.5e-4            # slightly hotter
+  lr_scheduler: cosine
+  warmup_ratio: 0.03
+  eff_batch_size: 64
+  per_device_batch_size: 8
+  max_len: 1024
+  bf16: true
+  phase_a: {epochs: 6, ckpt_fracs: [0.0, 0.5, 1.0]}   # up from 2
+  phase_b: {epochs: 6, ckpt_fracs: [0.0, 0.5, 1.0], adapter: continue}
+
+datagen:
+  endpoint_default: http://localhost:11434/v1
+  model_default: gemma4:26b
+  temperature: 1.0
+  max_tokens: 512
+  request_concurrency: 8
+  transforms: {noise_frac: 0.30, narrow_domain: gardening, contra_pair_density: 0.5}
+  clean_mix_ratio: 0.5
+  safety_scan: {classifier: unitary/toxic-bert, max_flags: 0, threshold: 0.5, batch_size: 32}
+
+data:
+  n_phase_a: 3000
+  n_phase_b: 3000
+  assistant_tokens: [150, 300]
+  target_blocklist: configs/leakage_blocklist.yaml
+  embed_audit_threshold: 0.80
+
+eval:
+  reuse_frozen_items: true
+  coherence_paraphrases: 3
+  reasoning_minibattery: false
+  judge: local_generator
+
+stats:
+  bootstrap_resamples: 10000
+  sesoi_d: 0.2
+  alpha: 0.05
+
+domains_file: configs/domains.yaml
